@@ -1,0 +1,15 @@
+# Locks the lean ML-repo style. Install once: `pip install pre-commit && pre-commit install`
+# Run on all files: `pre-commit run --all-files`
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+        # using black for formatting; keep ruff-format disabled to avoid double-format
+        stages: [manual]
+  - repo: https://github.com/psf/black
+    rev: 24.8.0
+    hooks:
+      - id: black

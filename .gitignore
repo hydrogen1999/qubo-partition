@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# Generated outputs and downloaded data (regenerate with the experiment scripts)
+results/
+datasets/
+qubo-partition.zip
+
+# Notebook checkpoints
+.ipynb_checkpoints/
+
+# Editor / OS / local config
+.DS_Store
+.claude/
+.vscode/
+.idea/
+
+# Course brief (not redistributed)
+project_description.pdf

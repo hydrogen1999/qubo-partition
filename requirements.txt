@@ -1,0 +1,17 @@
+# Core D-Wave Ocean stack
+dimod>=0.12
+dwave-samplers>=1.3
+dwave-networkx>=0.8
+
+# Scientific stack
+numpy>=1.24
+scipy>=1.10
+networkx>=3.0
+matplotlib>=3.7
+
+# Real-image loading (Weizmann horses + high-res scikit-image demos)
+pillow>=9.0
+scikit-image>=0.20
+
+# Testing
+pytest>=7.0
