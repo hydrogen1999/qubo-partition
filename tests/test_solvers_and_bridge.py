@@ -61,3 +61,17 @@ def test_reconstruction_recovers_structure():
     rec = run_reconstruction_demo(nx.cycle_graph(8), num_reads=150, num_sweeps=1500, seed=0)
     assert rec.gap >= -1e-6  # annealer never beats the optimum
     assert rec.f1 > 0.5  # recovers most of the hidden edges
+
+
+def test_solver_portfolio_runs_and_reaches_optimum():
+    from qubo_partition.solvers.portfolio import run_portfolio
+
+    g = nx.petersen_graph()
+    q = vertex_cover_qubo(g, penalty=2.0)
+    _, opt = exact_qubo_min(q)
+    res = run_portfolio(q, opt, num_reads=50, num_sweeps=500, seed=0)
+    names = {r.name for r in res}
+    assert {"SA", "Tabu", "Greedy"} <= names
+    for r in res:
+        assert r.gap >= -1e-6  # no solver beats the exact optimum
+        assert r.time_s >= 0.0

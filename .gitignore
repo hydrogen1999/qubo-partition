@@ -21,6 +21,13 @@ qubo-partition.zip
 # Notebook checkpoints
 .ipynb_checkpoints/
 
+# LaTeX build artifacts (keep .tex and .pdf)
+report/*.aux
+report/*.log
+report/*.out
+report/*.toc
+report/*.synctex.gz
+
 # Editor / OS / local config
 .DS_Store
 .claude/
