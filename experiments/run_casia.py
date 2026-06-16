@@ -113,12 +113,13 @@ for image_path, mask_path in pairs:
     start = time.time()
 
     rec = run_segmentation(
-        seeded,
-        lambda_smooth=1.0,
-        num_reads=200,
-        num_sweeps=2000,
-        seed=0,
-    )
+    seeded,
+    lambda_smooth=4.0,
+    num_reads=200,
+    num_sweeps=2000,
+    seed=0,
+    solver="sa",
+)
 
     elapsed = time.time() - start
 
