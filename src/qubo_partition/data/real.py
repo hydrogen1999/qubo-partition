@@ -68,7 +68,7 @@ def _otsu_foreground(gray: np.ndarray, otsu: float) -> np.ndarray:
     return high if frac_high_on_border < 0.5 else ~high
 
 
-_SKIMAGE_PHOTOS = ["camera", "coins", "astronaut", "clock", "cell", "coffee"]
+_SKIMAGE_PHOTOS = ["camera", "coins", "astronaut", "clock", "cell", "coffee", "moon", "page"]
 
 
 def load_skimage_demo(
