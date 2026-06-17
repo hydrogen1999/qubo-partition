@@ -143,35 +143,36 @@ def run_segmentation(
         n_bins=n_bins,
     )
 
-    if solver == "sa":
-        res = anneal(
-            qubo,
-            num_reads=num_reads,
-            num_sweeps=num_sweeps,
-            seed=seed,
-        )
+    opt_labels, opt_energy = min_cut_segmentation(model)
 
+    if solver == "maxflow":
+        # the exact graph-cut optimum is itself the reported result (gap 0)
+        annealed_labels = opt_labels
+        annealed_energy = opt_energy
+        energies = np.asarray([opt_energy], dtype=float)
+    elif solver == "sa":
+        res = anneal(qubo, num_reads=num_reads, num_sweeps=num_sweeps, seed=seed)
+        annealed_labels = model.sample_to_labels(res.sample)
+        annealed_energy, energies = res.energy, res.energies
     elif solver == "greedy":
         # pure-Python descent is O(n^2) per restart; cap restarts to stay tractable
         res = greedy_solve(qubo, num_reads=min(num_reads, 20), seed=seed)
-
+        annealed_labels = model.sample_to_labels(res.sample)
+        annealed_energy, energies = res.energy, res.energies
     elif solver == "tabu":
         res = tabu_solve(qubo, num_reads=min(num_reads, 5), seed=seed)
-
+        annealed_labels = model.sample_to_labels(res.sample)
+        annealed_energy, energies = res.energy, res.energies
     else:
         raise ValueError(f"Unknown solver: {solver}")
-
-    annealed_labels = model.sample_to_labels(res.sample)
-
-    opt_labels, opt_energy = min_cut_segmentation(model)
 
     return SegmentationRecord(
         name=seeded.name,
         shape=seeded.shape,
         lambda_smooth=lambda_smooth,
-        annealed_energy=res.energy,
+        annealed_energy=annealed_energy,
         optimal_energy=opt_energy,
-        gap=GapStats.from_energies(res.energies, opt_energy),
+        gap=GapStats.from_energies(energies, opt_energy),
         iou_annealed=iou(annealed_labels, seeded.truth),
         iou_optimal=iou(opt_labels, seeded.truth),
         pixel_acc_annealed=pixel_accuracy(annealed_labels, seeded.truth),

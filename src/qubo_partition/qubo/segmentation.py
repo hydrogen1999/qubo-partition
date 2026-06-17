@@ -34,12 +34,15 @@ def grid_edges(height: int, width: int, connectivity: int = 4) -> list[tuple[Pix
 
 
 def estimate_sigma(image: np.ndarray, connectivity: int = 4) -> float:
-    """Robust contrast scale: RMS of neighboring intensity differences."""
-    diffs = [image[i] - image[j] for i, j in grid_edges(*image.shape, connectivity=connectivity)]
-    if not diffs:
+    """Robust contrast scale: RMS of neighboring (vector) intensity differences."""
+    h, w = image.shape[:2]
+    d2 = [
+        float(np.sum((image[i] - image[j]) ** 2))
+        for i, j in grid_edges(h, w, connectivity=connectivity)
+    ]
+    if not d2:
         return 1.0
-    rms = float(np.sqrt(np.mean(np.square(diffs))))
-    return max(rms, 1e-3)
+    return max(float(np.sqrt(np.mean(d2))), 1e-3)
 
 
 def boykov_jolly_weights(
@@ -48,14 +51,19 @@ def boykov_jolly_weights(
     sigma: float | None = None,
     connectivity: int = 4,
 ) -> dict[tuple[Pixel, Pixel], float]:
-    """Smoothness weights, large for similar neighbors and small for dissimilar ones."""
+    """Smoothness weights, large for similar neighbors and small for dissimilar ones.
+
+    Works for grayscale (H x W) and color (H x W x C) images; the contrast is the
+    squared Euclidean distance between neighboring pixel vectors.
+    """
     if sigma is None:
         sigma = estimate_sigma(image, connectivity)
     inv = 1.0 / (2.0 * sigma * sigma)
+    h, w = image.shape[:2]
     weights: dict[tuple[Pixel, Pixel], float] = {}
-    for i, j in grid_edges(*image.shape, connectivity=connectivity):
-        d = float(image[i] - image[j])
-        weights[(i, j)] = float(lambda_smooth * np.exp(-(d * d) * inv))
+    for i, j in grid_edges(h, w, connectivity=connectivity):
+        d2 = float(np.sum((image[i] - image[j]) ** 2))
+        weights[(i, j)] = float(lambda_smooth * np.exp(-d2 * inv))
     return weights
 
 
@@ -69,7 +77,16 @@ def _gaussian_neglog(values: np.ndarray, mu: float, sigma: float) -> np.ndarray:
 def _histogram_neglog(
     image: np.ndarray, seed_values: np.ndarray, n_bins: int = 16, smoothing: float = 1.0
 ) -> np.ndarray:
-    """Negative log-likelihood under an intensity histogram fit to seed pixels."""
+    """Neg-log-likelihood under an intensity histogram fit to seed pixels.
+
+    Color images (H x W x C) are handled per channel under a naive-Bayes
+    (channel-independence) assumption: the costs sum across channels.
+    """
+    if image.ndim == 3:
+        cost = np.zeros(image.shape[:2])
+        for ch in range(image.shape[2]):
+            cost += _histogram_neglog(image[..., ch], seed_values[:, ch], n_bins, smoothing)
+        return cost
     edges = np.linspace(0.0, 1.0, n_bins + 1)
     counts, _ = np.histogram(np.clip(seed_values, 0.0, 1.0), bins=edges)
     probs = (counts + smoothing) / (counts.sum() + smoothing * n_bins)
@@ -131,7 +148,7 @@ class SegmentationModel:
 
     @property
     def shape(self) -> tuple[int, int]:
-        return self.image.shape  # type: ignore[return-value]
+        return self.image.shape[:2]  # type: ignore[return-value]
 
     @property
     def pixels(self) -> list[Pixel]:
