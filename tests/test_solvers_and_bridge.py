@@ -75,3 +75,21 @@ def test_solver_portfolio_runs_and_reaches_optimum():
     for r in res:
         assert r.gap >= -1e-6  # no solver beats the exact optimum
         assert r.time_s >= 0.0
+
+
+def test_greedy_tabu_return_per_restart_energies():
+    """Multi-restart baselines must report independent per-restart energies."""
+    from qubo_partition.solvers.greedy import greedy_solve
+    from qubo_partition.solvers.tabu import tabu_solve
+
+    g = nx.cycle_graph(8)
+    q = vertex_cover_qubo(g, penalty=2.0)
+    _, opt = exact_qubo_min(q)
+
+    gres = greedy_solve(q, num_reads=10, seed=0)
+    tres = tabu_solve(q, num_reads=4, seed=0)
+    assert len(gres.energies) == 10 and len(tres.energies) == 4
+    # energies are sorted ascending and the reported best matches the minimum
+    assert gres.energy == pytest.approx(float(gres.energies.min()))
+    assert tres.energy == pytest.approx(float(tres.energies.min()))
+    assert gres.energy >= opt - 1e-9 and tres.energy >= opt - 1e-9

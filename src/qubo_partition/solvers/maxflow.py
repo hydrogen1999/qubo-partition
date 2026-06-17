@@ -53,6 +53,13 @@ def _build_flow_graph(model: SegmentationModel, scale: float = 1.0e9) -> nx.DiGr
                 g.add_edge(node, SINK, capacity=cap_t)
 
     for (i, j), wij in model.weights.items():
+        if wij < 0:
+            # a negative smoothness weight is non-submodular; the min-cut would no
+            # longer equal the energy minimum, so the "exact reference" would lie.
+            raise ValueError(
+                "min_cut_segmentation requires non-negative pairwise weights "
+                f"(got {wij}); the energy is only submodular for w_ij >= 0."
+            )
         cap = I(float(wij))
         if cap <= 0:
             continue

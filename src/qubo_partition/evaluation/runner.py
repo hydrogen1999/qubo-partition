@@ -152,16 +152,11 @@ def run_segmentation(
         )
 
     elif solver == "greedy":
-        res = greedy_solve(
-            qubo,
-            seed=seed,
-        )
+        # pure-Python descent is O(n^2) per restart; cap restarts to stay tractable
+        res = greedy_solve(qubo, num_reads=min(num_reads, 20), seed=seed)
 
     elif solver == "tabu":
-        res = tabu_solve(
-            qubo,
-            seed=seed,
-        )
+        res = tabu_solve(qubo, num_reads=min(num_reads, 5), seed=seed)
 
     else:
         raise ValueError(f"Unknown solver: {solver}")

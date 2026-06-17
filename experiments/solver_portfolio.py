@@ -19,12 +19,12 @@ import numpy as np
 
 from qubo_partition.data.graphs import benchmark_graphs
 from qubo_partition.data.images import make_blob_image, make_two_region_image
+from qubo_partition.io_utils import write_csv, write_latex_table
 from qubo_partition.qubo.segmentation import segmentation_qubo
 from qubo_partition.qubo.vertex_cover import vertex_cover_qubo
 from qubo_partition.solvers.exact_vc import exact_min_vertex_cover_energy
 from qubo_partition.solvers.maxflow import min_cut_segmentation
 from qubo_partition.solvers.portfolio import run_portfolio
-from qubo_partition.io_utils import write_csv, write_latex_table
 
 RESULTS = Path("results")
 
@@ -57,27 +57,50 @@ def vertex_cover_portfolio(args) -> list[dict]:
     for name, g in graphs.items():
         qubo = vertex_cover_qubo(g, penalty=2.0)
         _, opt = exact_min_vertex_cover_energy(g, penalty=2.0)
-        for res in run_portfolio(qubo, opt, num_reads=args.num_reads,
-                                 num_sweeps=args.num_sweeps, seed=args.seed):
-            rows.append({"instance": name, "solver": res.name, "gap": res.gap,
-                         "time_s": res.time_s, "success": res.success})
+        for res in run_portfolio(
+            qubo, opt, num_reads=args.num_reads, num_sweeps=args.num_sweeps, seed=args.seed
+        ):
+            rows.append(
+                {
+                    "instance": name,
+                    "solver": res.name,
+                    "gap": res.gap,
+                    "time_s": res.time_s,
+                    "success": res.success,
+                }
+            )
     return rows
 
 
 def segmentation_portfolio(args) -> list[dict]:
     print("\n== Segmentation: solver portfolio vs. maximum-flow optimum ==")
-    images = [make_blob_image(size=16, seed=0),
-              make_two_region_image(size=16, seed=1),
-              make_blob_image(size=16, noise=0.15, seed=2)]
+    images = [
+        make_blob_image(size=16, seed=0),
+        make_two_region_image(size=16, seed=1),
+        make_blob_image(size=16, noise=0.15, seed=2),
+    ]
     rows = []
     for seeded in images:
-        qubo, model = segmentation_qubo(seeded.image, seeded.fg_seeds, seeded.bg_seeds,
-                                        lambda_smooth=1.0, data_model="histogram")
+        qubo, model = segmentation_qubo(
+            seeded.image,
+            seeded.fg_seeds,
+            seeded.bg_seeds,
+            lambda_smooth=1.0,
+            data_model="histogram",
+        )
         _, opt = min_cut_segmentation(model)
-        for res in run_portfolio(qubo, opt, num_reads=args.num_reads,
-                                 num_sweeps=args.num_sweeps, seed=args.seed):
-            rows.append({"instance": seeded.name, "solver": res.name, "gap": res.gap,
-                         "time_s": res.time_s, "success": res.success})
+        for res in run_portfolio(
+            qubo, opt, num_reads=args.num_reads, num_sweeps=args.num_sweeps, seed=args.seed
+        ):
+            rows.append(
+                {
+                    "instance": seeded.name,
+                    "solver": res.name,
+                    "gap": res.gap,
+                    "time_s": res.time_s,
+                    "success": res.success,
+                }
+            )
     return rows
 
 
@@ -102,8 +125,10 @@ def main():
 
     print("\nproblem        solver       mean_gap  max_gap  mean_time(s)  success")
     for r in agg:
-        print(f"  {r['problem']:13s} {r['solver']:11s} {r['mean_gap']:8.4f} "
-              f"{r['max_gap']:8.3f} {r['mean_time_s']:11.4f}  {r['success_rate']:.2f}")
+        print(
+            f"  {r['problem']:13s} {r['solver']:11s} {r['mean_gap']:8.4f} "
+            f"{r['max_gap']:8.3f} {r['mean_time_s']:11.4f}  {r['success_rate']:.2f}"
+        )
 
     write_csv(vc + seg, RESULTS / "solver_portfolio_per_instance.csv")
     write_csv(agg, RESULTS / "solver_portfolio.csv")
@@ -112,8 +137,8 @@ def main():
         columns=["problem", "solver", "mean_gap", "max_gap", "mean_time_s", "success_rate"],
         path=RESULTS / "tables" / "solver_portfolio.tex",
         caption="Classical solver portfolio on the identical QUBO: optimality gap "
-                "(vs. the exact reference) and wall-clock time. SA = simulated "
-                "annealing, Greedy = steepest descent.",
+        "(vs. the exact reference) and wall-clock time. SA = simulated "
+        "annealing, Greedy = steepest descent.",
         label="tab:portfolio",
     )
     print("\nWrote results/solver_portfolio.csv and results/tables/solver_portfolio.tex")

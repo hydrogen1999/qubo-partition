@@ -1,6 +1,6 @@
-from pathlib import Path
 import csv
 import time
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -114,9 +114,7 @@ for lam in LAMBDA_VALUES:
     avg_runtime = float(np.mean(runtimes))
 
     print(
-        f"Average IoU = {avg_iou:.3f} | "
-        f"Gap = {avg_gap:.3f} | "
-        f"Runtime = {avg_runtime:.2f}s"
+        f"Average IoU = {avg_iou:.3f} | " f"Gap = {avg_gap:.3f} | " f"Runtime = {avg_runtime:.2f}s"
     )
 
     rows.append(

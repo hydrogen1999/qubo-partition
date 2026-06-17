@@ -1,23 +1,26 @@
-from pathlib import Path
 import csv
+import os
 import time
+from pathlib import Path
 
-import cv2
 import numpy as np
+from PIL import Image
 
-from qubo_partition.data.images import SeededImage
-from qubo_partition.data.images import auto_seeds
-from qubo_partition.evaluation.runner import run_segmentation
 from qubo_partition import viz
-
+from qubo_partition.data.images import SeededImage, auto_seeds
+from qubo_partition.evaluation.runner import run_segmentation
 
 # =========================
-# Dataset paths
+# Dataset paths (override the root with the CASIA_ROOT env var if needed)
 # =========================
-DATASET_ROOT = Path("datasets/casia_v2/CASIA2")
+DATASET_ROOT = Path(os.environ.get("CASIA_ROOT", "datasets/casia_v2"))
 
 TAMPERED_DIR = DATASET_ROOT / "Tp"
-MASK_DIR = DATASET_ROOT / "CASIA 2 Groundtruth"
+# the groundtruth folder is named "Gt" (corrected release) or "CASIA 2 Groundtruth" (Kaggle)
+MASK_DIR = next(
+    (DATASET_ROOT / d for d in ("Gt", "CASIA 2 Groundtruth", "Groundtruth") if (DATASET_ROOT / d).is_dir()),
+    DATASET_ROOT / "Gt",
+)
 
 OUTPUT_DIR = Path("results/figures/casia")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -31,17 +34,18 @@ MAX_IMAGES = 20
 # Helper functions
 # =========================
 
-def load_image(path: Path) -> np.ndarray:
-    img = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
-    img = cv2.resize(img, (64, 64))
-    return img.astype(np.float32) / 255.0
+
+def load_image(path: Path, size: int = 64) -> np.ndarray:
+    # bilinear is fine for a grayscale intensity image
+    img = Image.open(path).convert("L").resize((size, size), Image.BILINEAR)
+    return np.asarray(img, dtype=np.float32) / 255.0
 
 
-def load_mask(path: Path) -> np.ndarray:
-    mask = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
-    mask = cv2.resize(mask, (64, 64))
-
-    return mask > 0
+def load_mask(path: Path, size: int = 64) -> np.ndarray:
+    # NEAREST + threshold: never interpolate a binary mask (would blur its edges,
+    # inflate the foreground, and corrupt IoU / seed placement).
+    mask = Image.open(path).convert("L").resize((size, size), Image.NEAREST)
+    return np.asarray(mask) > 127
 
 
 def mask_fraction(mask: np.ndarray) -> float:
@@ -113,28 +117,26 @@ for image_path, mask_path in pairs:
     start = time.time()
 
     rec = run_segmentation(
-    seeded,
-    lambda_smooth=4.0,
-    num_reads=200,
-    num_sweeps=2000,
-    seed=0,
-    solver="sa",
-)
+        seeded,
+        lambda_smooth=4.0,
+        num_reads=200,
+        num_sweeps=2000,
+        seed=0,
+        solver="sa",
+    )
 
     elapsed = time.time() - start
 
-    print(
-        f"  IoU={rec.iou_annealed:.3f} "
-        f"gap={rec.gap.best_gap:.3f} "
-        f"time={elapsed:.2f}s"
-    )
+    print(f"  IoU={rec.iou_annealed:.3f} " f"gap={rec.gap.best_gap:.3f} " f"time={elapsed:.2f}s")
 
-    rows.append({
-        "image": image_path.name,
-        "iou": round(rec.iou_annealed, 4),
-        "gap": round(rec.gap.best_gap, 4),
-        "runtime": round(elapsed, 2),
-    })
+    rows.append(
+        {
+            "image": image_path.name,
+            "iou": round(rec.iou_annealed, 4),
+            "gap": round(rec.gap.best_gap, 4),
+            "runtime": round(elapsed, 2),
+        }
+    )
 
     viz.plot_segmentation(
         seeded.image,
@@ -155,10 +157,7 @@ for image_path, mask_path in pairs:
 # =========================
 
 with open(RESULTS_CSV, "w", newline="") as f:
-    writer = csv.DictWriter(
-        f,
-        fieldnames=["image", "iou", "gap", "runtime"]
-    )
+    writer = csv.DictWriter(f, fieldnames=["image", "iou", "gap", "runtime"])
 
     writer.writeheader()
     writer.writerows(rows)

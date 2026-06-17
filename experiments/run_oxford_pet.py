@@ -1,5 +1,5 @@
-from pathlib import Path
 import time
+from pathlib import Path
 
 import numpy as np
 from PIL import Image
@@ -79,11 +79,7 @@ for image_path in image_files:
 
     runtime = time.perf_counter() - start
 
-    print(
-        f"  IoU={rec.iou_annealed:.3f} "
-        f"gap={rec.gap.best_gap:.3f} "
-        f"time={runtime:.2f}s"
-    )
+    print(f"  IoU={rec.iou_annealed:.3f} " f"gap={rec.gap.best_gap:.3f} " f"time={runtime:.2f}s")
 
     viz.plot_segmentation(
         seeded.image,

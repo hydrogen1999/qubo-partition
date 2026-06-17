@@ -36,7 +36,11 @@ def run_portfolio(
     atol = max(1.0, abs(optimal_energy)) * rtol
 
     specs = [
-        ("SA", SimulatedAnnealingSampler(), {"num_reads": num_reads, "num_sweeps": num_sweeps, "seed": seed}),
+        (
+            "SA",
+            SimulatedAnnealingSampler(),
+            {"num_reads": num_reads, "num_sweeps": num_sweeps, "seed": seed},
+        ),
         ("Tabu", TabuSampler(), {"num_reads": num_reads, "seed": seed}),
         ("Greedy", SteepestDescentSampler(), {"num_reads": num_reads, "seed": seed}),
     ]
