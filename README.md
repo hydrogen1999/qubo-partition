@@ -5,11 +5,11 @@
 ![style](https://img.shields.io/badge/style-ruff%20%2B%20black-000000)
 ![tests](https://img.shields.io/badge/tests-21%20passing-brightgreen)
 
-Two superficially different problems — **minimum vertex cover** on a graph and
-**foreground/background separation** in an image — are written as a *single*
+Two superficially different problems, **minimum vertex cover** on a graph and
+**foreground/background separation** in an image, are written as a *single*
 quadratic unconstrained binary optimization (QUBO) objective
 
-$$H(x) = \sum_i a_i x_i + \sum_{i<j} b_{ij}\, x_i x_j, \qquad x_i \in \{0,1\},$$
+$H(x) = \sum_i a_i x_i + \sum_{i<j} b_{ij}\, x_i x_j, \qquad x_i \in \{0,1\},$
 
 and minimized with **one** simulated-annealing sampler rather than a learned
 model. Every result is validated against an **exact reference**, and we report
@@ -98,20 +98,20 @@ every phase with inline figures. For the zip-upload path, run
 ## Running each phase
 
 ```bash
-# Phase 1 — vertex cover: benchmarks, gap-vs-size study, penalty (P>1) sweep
+# Phase 1: vertex cover: benchmarks, gap-vs-size study, penalty (P>1) sweep
 PYTHONPATH=src python experiments/phase1_vertex_cover.py --num-reads 200
 
-# Phase 2 — synthetic segmentation: benchmarks, lambda study, seed-sensitivity
+# Phase 2: synthetic segmentation: benchmarks, lambda study, seed-sensitivity
 PYTHONPATH=src python experiments/phase2_segmentation.py --size 16 --num-reads 200
 
-# Phase 2 — real data (downloads the 32x32 Weizmann horses first)
+# Phase 2: real data (downloads the 32x32 Weizmann horses first)
 bash scripts/get_weizmann_horses.sh
 PYTHONPATH=src python experiments/phase2_real_horses.py --data datasets/weizmann_horse_32
 
-# Phase 2 — high-resolution images (cameraman / coins / cell / clock / ...)
+# Phase 2: high-resolution images (cameraman / coins / cell / clock / ...)
 PYTHONPATH=src python experiments/phase2_hq_images.py --size 128   # 16k pixels, ~73s
 
-# Phase 3 — the GraphMI bridge
+# Phase 3: the GraphMI bridge
 PYTHONPATH=src python experiments/phase3_graphmi_bridge.py --num-reads 200
 ```
 

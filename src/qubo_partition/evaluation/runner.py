@@ -17,7 +17,9 @@ from qubo_partition.qubo.vertex_cover import (
 )
 from qubo_partition.solvers.annealer import anneal
 from qubo_partition.solvers.exact_vc import exact_min_vertex_cover_energy
+from qubo_partition.solvers.greedy import greedy_solve
 from qubo_partition.solvers.maxflow import min_cut_segmentation
+from qubo_partition.solvers.tabu import tabu_solve
 
 
 @dataclass
@@ -125,8 +127,10 @@ def run_segmentation(
     connectivity: int = 4,
     data_model: str = "histogram",
     n_bins: int = 16,
+    solver: str = "sa",
 ) -> SegmentationRecord:
-    """Build the Boykov--Jolly QUBO, anneal it, and check against maximum flow."""
+    """Build the Boykov--Jolly QUBO, solve it, and check against maximum flow."""
+
     qubo, model = segmentation_qubo(
         seeded.image,
         seeded.fg_seeds,
@@ -138,7 +142,30 @@ def run_segmentation(
         data_model=data_model,
         n_bins=n_bins,
     )
-    res = anneal(qubo, num_reads=num_reads, num_sweeps=num_sweeps, seed=seed)
+
+    if solver == "sa":
+        res = anneal(
+            qubo,
+            num_reads=num_reads,
+            num_sweeps=num_sweeps,
+            seed=seed,
+        )
+
+    elif solver == "greedy":
+        res = greedy_solve(
+            qubo,
+            seed=seed,
+        )
+
+    elif solver == "tabu":
+        res = tabu_solve(
+            qubo,
+            seed=seed,
+        )
+
+    else:
+        raise ValueError(f"Unknown solver: {solver}")
+
     annealed_labels = model.sample_to_labels(res.sample)
 
     opt_labels, opt_energy = min_cut_segmentation(model)
