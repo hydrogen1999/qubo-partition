@@ -18,6 +18,7 @@ import argparse
 import csv
 import os
 import time
+from io import BytesIO
 from pathlib import Path
 
 import numpy as np
@@ -42,10 +43,41 @@ OUTPUT_DIR = Path("results/figures/casia")
 RESULTS_CSV = Path("results/casia_results.csv")
 
 
-def load_image(path: Path, size: int, color: bool) -> np.ndarray:
-    mode = "RGB" if color else "L"
-    img = Image.open(path).convert(mode).resize((size, size), Image.BILINEAR)
-    return np.asarray(img, dtype=np.float32) / 255.0
+def _norm(a: np.ndarray) -> np.ndarray:
+    a = a.astype(np.float32)
+    lo, hi = float(a.min()), float(a.max())
+    return np.zeros_like(a) if hi - lo < 1e-9 else (a - lo) / (hi - lo)
+
+
+def _ela_map(pil_rgb: Image.Image, quality: int = 90) -> np.ndarray:
+    """Error Level Analysis: tampered regions recompress differently -> they light up."""
+    buf = BytesIO()
+    pil_rgb.save(buf, "JPEG", quality=quality)
+    buf.seek(0)
+    recompressed = np.asarray(Image.open(buf).convert("RGB"), dtype=np.float32)
+    diff = np.abs(np.asarray(pil_rgb, dtype=np.float32) - recompressed).max(axis=2)
+    return _norm(diff)
+
+
+def _noise_map(gray: np.ndarray) -> np.ndarray:
+    """High-frequency noise residual: spliced regions carry different sensor noise."""
+    return _norm(np.abs(gray - ndimage.median_filter(gray, size=3)))
+
+
+def build_features(path: Path, size: int, features: set[str]) -> tuple[np.ndarray, np.ndarray]:
+    """Return (feature_stack HxWxC for the model, rgb HxWx3 for display)."""
+    pil = Image.open(path).convert("RGB").resize((size, size), Image.BILINEAR)
+    rgb = np.asarray(pil, dtype=np.float32) / 255.0
+    chans = []
+    if "color" in features:
+        chans.append(rgb)
+    if "ela" in features:
+        chans.append(_ela_map(pil)[..., None])
+    if "noise" in features:
+        chans.append(_noise_map(rgb.mean(axis=2))[..., None])
+    if not chans:  # default to color
+        chans.append(rgb)
+    return np.concatenate(chans, axis=2).astype(np.float32), rgb
 
 
 def load_mask(path: Path, size: int) -> np.ndarray:
@@ -54,8 +86,15 @@ def load_mask(path: Path, size: int) -> np.ndarray:
     return np.asarray(mask) > 127
 
 
-def eroded_seeds(truth: np.ndarray, n_each: int, erode: int, rng) -> tuple[np.ndarray, np.ndarray]:
-    """Sample interior fg/bg seeds from the eroded mask (away from the boundary)."""
+def eroded_seeds(
+    truth: np.ndarray, n_each: int, erode: int, rng, frac: float | None = None
+) -> tuple[np.ndarray, np.ndarray]:
+    """Sample interior fg/bg seeds from the eroded mask (away from the boundary).
+
+    If ``frac`` is given, seed that fraction of each region's interior (dense
+    interactive scribbles that scale with region size); otherwise seed ``n_each``
+    pixels per region.
+    """
     fg_in = ndimage.binary_erosion(truth, iterations=erode)
     bg_in = ndimage.binary_erosion(~truth, iterations=erode)
     if not fg_in.any():
@@ -66,7 +105,10 @@ def eroded_seeds(truth: np.ndarray, n_each: int, erode: int, rng) -> tuple[np.nd
     def pick(region):
         idx = np.argwhere(region)
         out = np.zeros(truth.shape, dtype=bool)
-        k = min(n_each, len(idx))
+        if len(idx) == 0:
+            return out
+        k = max(1, int(round(frac * len(idx)))) if frac else min(n_each, len(idx))
+        k = min(k, len(idx))
         for r, c in idx[rng.choice(len(idx), size=k, replace=False)]:
             out[r, c] = True
         return out
@@ -89,28 +131,46 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--size", type=int, default=96)
     ap.add_argument("--limit", type=int, default=None, help="max images (default: all)")
-    ap.add_argument("--n-seeds", type=int, default=15, help="seeds per class")
+    ap.add_argument("--n-seeds", type=int, default=15, help="seeds per class (count mode)")
+    ap.add_argument(
+        "--seed-frac",
+        type=float,
+        default=None,
+        help="dense interactive mode: fraction of each region's interior to seed",
+    )
     ap.add_argument("--erode", type=int, default=1)
     ap.add_argument("--lam", type=float, default=4.0)
     ap.add_argument("--solver", choices=["maxflow", "sa"], default="maxflow")
-    ap.add_argument("--color", choices=["rgb", "gray"], default="rgb")
+    ap.add_argument(
+        "--features",
+        default="color,ela,noise",
+        help="comma list of cues: color, ela (Error Level Analysis), noise residual",
+    )
     ap.add_argument("--num-reads", type=int, default=100)
     ap.add_argument("--num-sweeps", type=int, default=2000)
     ap.add_argument("--n-figures", type=int, default=12)
     ap.add_argument("--min-frac", type=float, default=0.01)
     ap.add_argument("--max-frac", type=float, default=0.80)
+    ap.add_argument("--sample", type=int, default=None, help="random representative subset size")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     RESULTS_CSV.parent.mkdir(parents=True, exist_ok=True)
     rng = np.random.default_rng(args.seed)
+    features = {f.strip() for f in args.features.split(",") if f.strip()}
 
     pairs = collect_pairs()
     print(f"Found {len(pairs)} image-mask pairs under {DATASET_ROOT}")
+    if args.sample is not None and args.sample < len(pairs):
+        # representative random subset (avoids the alphabetical easy-prefix bias)
+        idx = rng.choice(len(pairs), size=args.sample, replace=False)
+        pairs = [pairs[i] for i in sorted(idx)]
+        print(f"Using a random representative sample of {len(pairs)} pairs")
+    seed_desc = f"seed_frac={args.seed_frac}" if args.seed_frac else f"n_seeds={args.n_seeds}"
     print(
-        f"Config: size={args.size} color={args.color} solver={args.solver} "
-        f"lam={args.lam} n_seeds={args.n_seeds}\n"
+        f"Config: size={args.size} features={sorted(features)} solver={args.solver} "
+        f"lam={args.lam} {seed_desc}\n"
     )
 
     rows = []
@@ -126,8 +186,8 @@ def main():
         if frac < args.min_frac or frac > args.max_frac:
             continue
 
-        image = load_image(image_path, args.size, color=(args.color == "rgb"))
-        fg_seeds, bg_seeds = eroded_seeds(truth, args.n_seeds, args.erode, rng)
+        image, rgb = build_features(image_path, args.size, features)
+        fg_seeds, bg_seeds = eroded_seeds(truth, args.n_seeds, args.erode, rng, frac=args.seed_frac)
         if not fg_seeds.any() or not bg_seeds.any():
             continue
 
@@ -160,7 +220,7 @@ def main():
         processed += 1
 
         if n_fig < args.n_figures:
-            disp = seeded.image if args.color == "gray" else seeded.image.mean(axis=2)
+            disp = rgb.mean(axis=2)  # grayscale view of the original for display
             viz.plot_segmentation(
                 disp,
                 seeded.fg_seeds,
