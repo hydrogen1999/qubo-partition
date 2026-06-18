@@ -140,7 +140,11 @@ def main():
     )
     ap.add_argument("--erode", type=int, default=1)
     ap.add_argument("--lam", type=float, default=4.0)
-    ap.add_argument("--solver", choices=["maxflow", "sa"], default="maxflow")
+    ap.add_argument(
+    "--solver",
+    choices=["maxflow", "sa", "tabu", "greedy"],
+    default="maxflow",
+)
     ap.add_argument(
         "--features",
         default="color,ela,noise",

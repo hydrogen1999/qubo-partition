@@ -6,6 +6,7 @@ import time
 from dataclasses import dataclass
 
 from qubo_partition.qubo.base import QUBO
+from qubo_partition.solvers.gurobi import gurobi_solve
 
 
 @dataclass
@@ -25,7 +26,8 @@ def run_portfolio(
     seed: int = 0,
     rtol: float = 1e-6,
 ) -> list[SolverResult]:
-    """Run SA, Tabu, and steepest-descent on one QUBO; report gap and wall-time."""
+    """Run SA, Tabu, Greedy, and Gurobi on one QUBO."""
+
     from dwave.samplers import (
         SimulatedAnnealingSampler,
         SteepestDescentSampler,
@@ -46,15 +48,41 @@ def run_portfolio(
     ]
 
     results: list[SolverResult] = []
+
     for name, sampler, kw in specs:
         t0 = time.perf_counter()
+
         try:
             ss = sampler.sample(bqm, **kw)
-        except TypeError:  # some samplers reject seed/num_sweeps
+        except TypeError:
             kw2 = {k: v for k, v in kw.items() if k not in ("seed", "num_sweeps")}
             ss = sampler.sample(bqm, **kw2)
+
         dt = time.perf_counter() - t0
         e = float(ss.first.energy)
         gap = e - optimal_energy
-        results.append(SolverResult(name, e, gap, dt, gap <= atol))
+
+        results.append(
+            SolverResult(
+                name=name,
+                best_energy=e,
+                gap=gap,
+                time_s=dt,
+                success=gap <= atol,
+            )
+        )
+
+    gurobi_res = gurobi_solve(qubo)
+    gurobi_gap = gurobi_res.energy - optimal_energy
+
+    results.append(
+        SolverResult(
+            name="Gurobi",
+            best_energy=gurobi_res.energy,
+            gap=gurobi_gap,
+            time_s=gurobi_res.time_s,
+            success=gurobi_gap <= atol,
+        )
+    )
+
     return results
