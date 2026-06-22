@@ -150,19 +150,22 @@ def run_segmentation(
         annealed_labels = opt_labels
         annealed_energy = opt_energy
         energies = np.asarray([opt_energy], dtype=float)
+
     elif solver == "sa":
         res = anneal(qubo, num_reads=num_reads, num_sweeps=num_sweeps, seed=seed)
         annealed_labels = model.sample_to_labels(res.sample)
         annealed_energy, energies = res.energy, res.energies
+
     elif solver == "greedy":
-        # pure-Python descent is O(n^2) per restart; cap restarts to stay tractable
-        res = greedy_solve(qubo, num_reads=min(num_reads, 20), seed=seed)
+        res = greedy_solve(qubo, num_reads=5, seed=seed)
         annealed_labels = model.sample_to_labels(res.sample)
         annealed_energy, energies = res.energy, res.energies
+
     elif solver == "tabu":
-        res = tabu_solve(qubo, num_reads=min(num_reads, 5), seed=seed)
+        res = tabu_solve(qubo, num_reads=1, seed=seed)
         annealed_labels = model.sample_to_labels(res.sample)
         annealed_energy, energies = res.energy, res.energies
+
     else:
         raise ValueError(f"Unknown solver: {solver}")
 
