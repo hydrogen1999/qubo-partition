@@ -156,8 +156,14 @@ def main():
     ap.add_argument("--min-frac", type=float, default=0.01)
     ap.add_argument("--max-frac", type=float, default=0.80)
     ap.add_argument("--sample", type=int, default=None, help="random representative subset size")
+    ap.add_argument("--tag", default="", help="suffix for output CSV/figures (e.g. solver name)")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
+
+    global OUTPUT_DIR, RESULTS_CSV
+    if args.tag:
+        OUTPUT_DIR = Path(f"results/figures/casia_{args.tag}")
+        RESULTS_CSV = Path(f"results/casia_results_{args.tag}.csv")
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     RESULTS_CSV.parent.mkdir(parents=True, exist_ok=True)
