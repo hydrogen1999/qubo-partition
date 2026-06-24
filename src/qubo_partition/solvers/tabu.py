@@ -19,7 +19,9 @@ class TabuResult:
 
 def tabu_solve(
     qubo: QUBO,
-    num_reads: int = 5,
+    num_reads: int = 1,
+    timeout: int = 1000,  # ms per read; the ~20ms default times out at a poor
+    # solution on large QUBOs (e.g. 9216-var segmentation), so set it explicitly
     max_iters: int = 500,  # kept for API compatibility
     tabu_size: int = 20,  # kept for API compatibility
     seed: int | None = None,
@@ -30,6 +32,7 @@ def tabu_solve(
     ss = sampler.sample(
         bqm,
         num_reads=max(1, num_reads),
+        timeout=timeout,
         seed=seed,
     )
 
