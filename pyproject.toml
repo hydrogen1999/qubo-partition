@@ -23,6 +23,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=7.0", "ruff>=0.6", "black>=24.0"]
 real = ["pillow>=9.0", "scikit-image>=0.20"]
+gurobi = ["gurobipy>=10.0"]  # exact QUBO baseline; requires a Gurobi license
 
 [tool.setuptools.packages.find]
 where = ["src"]

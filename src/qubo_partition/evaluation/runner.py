@@ -157,12 +157,12 @@ def run_segmentation(
         annealed_energy, energies = res.energy, res.energies
 
     elif solver == "greedy":
-        res = greedy_solve(qubo, num_reads=5, seed=seed)
+        res = greedy_solve(qubo, num_reads=num_reads, seed=seed)
         annealed_labels = model.sample_to_labels(res.sample)
         annealed_energy, energies = res.energy, res.energies
 
     elif solver == "tabu":
-        res = tabu_solve(qubo, num_reads=1, seed=seed)
+        res = tabu_solve(qubo, num_reads=num_reads, seed=seed)
         annealed_labels = model.sample_to_labels(res.sample)
         annealed_energy, energies = res.energy, res.energies
 

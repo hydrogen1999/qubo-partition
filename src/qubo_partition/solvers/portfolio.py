@@ -6,7 +6,6 @@ import time
 from dataclasses import dataclass
 
 from qubo_partition.qubo.base import QUBO
-from qubo_partition.solvers.gurobi import gurobi_solve
 
 
 @dataclass
@@ -25,9 +24,14 @@ def run_portfolio(
     num_sweeps: int = 1000,
     seed: int = 0,
     rtol: float = 1e-6,
+    include_gurobi: str | bool = "auto",
 ) -> list[SolverResult]:
-    """Run SA, Tabu, Greedy, and Gurobi on one QUBO."""
+    """Run SA, Tabu, and steepest-descent (Greedy) on one QUBO; report gap and time.
 
+    Gurobi (exact) is included only when ``include_gurobi`` is True, or "auto"
+    (default) and gurobipy is importable; failures (missing package or license)
+    are skipped rather than aborting the comparison.
+    """
     from dwave.samplers import (
         SimulatedAnnealingSampler,
         SteepestDescentSampler,
@@ -48,41 +52,30 @@ def run_portfolio(
     ]
 
     results: list[SolverResult] = []
-
     for name, sampler, kw in specs:
         t0 = time.perf_counter()
-
         try:
             ss = sampler.sample(bqm, **kw)
-        except TypeError:
+        except TypeError:  # some samplers reject seed/num_sweeps
             kw2 = {k: v for k, v in kw.items() if k not in ("seed", "num_sweeps")}
             ss = sampler.sample(bqm, **kw2)
-
         dt = time.perf_counter() - t0
         e = float(ss.first.energy)
         gap = e - optimal_energy
+        results.append(SolverResult(name, e, gap, dt, gap <= atol))
 
-        results.append(
-            SolverResult(
-                name=name,
-                best_energy=e,
-                gap=gap,
-                time_s=dt,
-                success=gap <= atol,
-            )
-        )
+    # Optional exact baseline (only if available); never abort the portfolio.
+    from qubo_partition.solvers.gurobi import gurobi_available
 
-    gurobi_res = gurobi_solve(qubo)
-    gurobi_gap = gurobi_res.energy - optimal_energy
+    want_gurobi = include_gurobi is True or (include_gurobi == "auto" and gurobi_available())
+    if want_gurobi:
+        try:
+            from qubo_partition.solvers.gurobi import gurobi_solve
 
-    results.append(
-        SolverResult(
-            name="Gurobi",
-            best_energy=gurobi_res.energy,
-            gap=gurobi_gap,
-            time_s=gurobi_res.time_s,
-            success=gurobi_gap <= atol,
-        )
-    )
+            gres = gurobi_solve(qubo)
+            ggap = gres.energy - optimal_energy
+            results.append(SolverResult("Gurobi", gres.energy, ggap, gres.time_s, ggap <= atol))
+        except Exception as exc:  # missing license, etc.
+            print(f"[portfolio] Gurobi skipped: {exc}")
 
     return results

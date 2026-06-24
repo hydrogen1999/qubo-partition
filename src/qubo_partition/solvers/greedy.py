@@ -1,4 +1,3 @@
-
 """Greedy steepest-descent baseline for a QUBO using D-Wave's optimized sampler."""
 
 from __future__ import annotations
@@ -39,4 +38,3 @@ def greedy_solve(
         energy=float(ss.first.energy),
         energies=energies,
     )
-

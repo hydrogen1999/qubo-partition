@@ -21,7 +21,7 @@ def tabu_solve(
     qubo: QUBO,
     num_reads: int = 5,
     max_iters: int = 500,  # kept for API compatibility
-    tabu_size: int = 20,   # kept for API compatibility
+    tabu_size: int = 20,  # kept for API compatibility
     seed: int | None = None,
 ) -> TabuResult:
     bqm = qubo.to_bqm()
@@ -40,4 +40,3 @@ def tabu_solve(
         energy=float(ss.first.energy),
         energies=energies,
     )
-

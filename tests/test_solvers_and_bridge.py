@@ -69,9 +69,10 @@ def test_solver_portfolio_runs_and_reaches_optimum():
     g = nx.petersen_graph()
     q = vertex_cover_qubo(g, penalty=2.0)
     _, opt = exact_qubo_min(q)
-    res = run_portfolio(q, opt, num_reads=50, num_sweeps=500, seed=0)
+    # include_gurobi=False must work even when gurobipy is absent (regression)
+    res = run_portfolio(q, opt, num_reads=50, num_sweeps=500, seed=0, include_gurobi=False)
     names = {r.name for r in res}
-    assert {"SA", "Tabu", "Greedy"} <= names
+    assert {"SA", "Tabu", "Greedy"} == names  # exactly the heuristics, no hard Gurobi dep
     for r in res:
         assert r.gap >= -1e-6  # no solver beats the exact optimum
         assert r.time_s >= 0.0
