@@ -28,11 +28,6 @@ from scipy import ndimage
 from qubo_partition import viz
 from qubo_partition.data.images import SeededImage
 from qubo_partition.evaluation.runner import run_segmentation
-from qubo_partition.data.patches import (
-    split_image_into_patches,
-    split_mask_into_patches,
-    stitch_masks,
-)
 
 DATASET_ROOT = Path(
     os.environ.get("AUTOSPLICE_ROOT", "~/Downloads/AutoSplice")
@@ -41,8 +36,8 @@ DATASET_ROOT = Path(
 TAMPERED_DIR = DATASET_ROOT / "Forged_JPEG100"
 MASK_DIR = DATASET_ROOT / "Mask"
 
-RESULTS_CSV = Path("results/autosplice_patch_results.csv")
-OUTPUT_DIR = Path("results/figures/autosplice_patch")
+OUTPUT_DIR = Path("results/figures/autosplice")
+RESULTS_CSV = Path("results/autosplice_results.csv")
 
 
 def _norm(a: np.ndarray) -> np.ndarray:
@@ -80,46 +75,6 @@ def build_features(path: Path, size: int, features: set[str]) -> tuple[np.ndarra
     if not chans:  # default to color
         chans.append(rgb)
     return np.concatenate(chans, axis=2).astype(np.float32), rgb
-
-def build_features_from_image(
-    pil: Image.Image,
-    size: int,
-    features: set[str],
-) -> tuple[np.ndarray, np.ndarray]:
-    """
-    Same as build_features(), but starts from a PIL image.
-    """
-
-    pil = pil.convert("RGB").resize((size, size), Image.BILINEAR)
-
-    rgb = np.asarray(pil, dtype=np.float32) / 255.0
-
-    chans = []
-
-    if "color" in features:
-        chans.append(rgb)
-
-    if "ela" in features:
-        chans.append(_ela_map(pil)[..., None])
-
-    if "noise" in features:
-        chans.append(_noise_map(rgb.mean(axis=2))[..., None])
-
-    if not chans:
-        chans.append(rgb)
-
-    return np.concatenate(chans, axis=2).astype(np.float32), rgb
-
-def load_mask_from_image(mask: np.ndarray, size: int) -> np.ndarray:
-    """
-    Same as load_mask(), but starts from a NumPy mask patch.
-    """
-
-    pil = Image.fromarray(mask.astype(np.uint8) * 255)
-
-    pil = pil.resize((size, size), Image.NEAREST)
-
-    return np.asarray(pil) > 127
 
 
 def load_mask(path: Path, size: int) -> np.ndarray:
@@ -174,12 +129,6 @@ def collect_pairs() -> list[tuple[Path, Path]]:
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--size", type=int, default=96)
-    ap.add_argument(
-    "--patch-size",
-    type=int,
-    default=512,
-    help="patch size for large-image processing",
-    )
     ap.add_argument("--limit", type=int, default=None, help="max images (default: all)")
     ap.add_argument("--n-seeds", type=int, default=15, help="seeds per class (count mode)")
     ap.add_argument(
@@ -208,12 +157,6 @@ def main():
     ap.add_argument("--sample", type=int, default=None, help="random representative subset size")
     ap.add_argument("--tag", default="", help="suffix for output CSV/figures (e.g. solver name)")
     ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument(
-    "--stride",
-    type=int,
-    default=None,
-    help="Stride between patches (default = patch_size, no overlap)",
-    )
     args = ap.parse_args()
 
     global OUTPUT_DIR, RESULTS_CSV
@@ -243,165 +186,69 @@ def main():
     processed = 0
     n_fig = 0
     t_start = time.time()
+
     for image_path, mask_path in pairs:
-        image_start = time.time()
         if args.limit is not None and processed >= args.limit:
             break
+        truth = load_mask(mask_path, args.size)
+        frac = float(truth.mean())
+        if frac < args.min_frac or frac > args.max_frac:
+            continue
 
-        original_image = Image.open(image_path).convert("RGB")
-        original_mask = Image.open(mask_path).convert("L")
+        image, rgb = build_features(image_path, args.size, features)
+        fg_seeds, bg_seeds = eroded_seeds(truth, args.n_seeds, args.erode, rng, frac=args.seed_frac)
+        if not fg_seeds.any() or not bg_seeds.any():
+            continue
 
-        img_patches, coords, original_size = split_image_into_patches(
-            original_image,
-            patch_size=args.patch_size,
-            stride=args.stride,
+        seeded = SeededImage(
+            image=image, truth=truth, fg_seeds=fg_seeds, bg_seeds=bg_seeds, name=image_path.stem
         )
 
-        mask_patches, _, _ = split_mask_into_patches(
-            np.array(original_mask) > 127,
-            patch_size=args.patch_size,
-            stride=args.stride,
+        t0 = time.time()
+        rec = run_segmentation(
+            seeded,
+            lambda_smooth=args.lam,
+            data_model="histogram",
+            connectivity=8,
+            num_reads=args.num_reads,
+            num_sweeps=args.num_sweeps,
+            seed=args.seed,
+            solver=args.solver,
         )
-
-        predicted_masks = []
-        solver_time = 0.0
-
-        
-
-        for img_patch, mask_patch in zip(img_patches, mask_patches):
-
-            truth = load_mask_from_image(mask_patch, args.size)
-
-            frac = float(truth.mean())
-
-            if frac < args.min_frac or frac > args.max_frac:
-                predicted_masks.append(
-                    np.zeros(mask_patch.shape, dtype=bool)
-                )
-                continue
-
-            image, rgb = build_features_from_image(
-                img_patch,
-                args.size,
-                features,
-            )
-
-            fg_seeds, bg_seeds = eroded_seeds(
-                truth,
-                args.n_seeds,
-                args.erode,
-                rng,
-                frac=args.seed_frac,
-            )
-
-            if not fg_seeds.any() or not bg_seeds.any():
-                predicted_masks.append(
-                    np.zeros(mask_patch.shape, dtype=bool)
-                )
-                continue
-
-            seeded = SeededImage(
-                image=image,
-                truth=truth,
-                fg_seeds=fg_seeds,
-                bg_seeds=bg_seeds,
-                name=image_path.stem,
-            )
-
-            t0 = time.time()
-
-            rec = run_segmentation(
-                seeded,
-                lambda_smooth=args.lam,
-                data_model="histogram",
-                connectivity=8,
-                num_reads=args.num_reads,
-                num_sweeps=args.num_sweeps,
-                seed=args.seed,
-                solver=args.solver,
-            )
-
-            solver_time += time.time() - t0
-
-            rec = run_segmentation(
-                seeded,
-                lambda_smooth=args.lam,
-                data_model="histogram",
-                connectivity=8,
-                num_reads=args.num_reads,
-                num_sweeps=args.num_sweeps,
-                seed=args.seed,
-                solver=args.solver,
-            )
-
-            prediction = (
-                rec.optimal_labels
-                if args.solver == "maxflow"
-                else rec.annealed_labels
-            )
-
-            prediction = Image.fromarray(
-               prediction.astype(np.uint8) * 255
-            )
-
-            prediction = prediction.resize(
-               img_patch.size,
-               Image.NEAREST,
-            )
-
-            prediction = np.array(prediction) > 127
-
-            predicted_masks.append(prediction)
-
-        
-
-        stitched_prediction = stitch_masks(
-            predicted_masks,
-            coords,
-            original_size,
-        )
-        total_runtime = time.time() - image_start
-        # Save stitched prediction
-        Image.fromarray(
-            stitched_prediction.astype(np.uint8) * 255
-        ).save(
-            OUTPUT_DIR / f"{image_path.stem}_stitched.png"
-        )
-
-        # Save original image
-        original_image.save(
-            OUTPUT_DIR / f"{image_path.stem}_image.png"
-        )
-
-        # Save ground-truth mask
-        original_mask.save(
-            OUTPUT_DIR / f"{image_path.stem}_truth.png"
-        )
-
-
-        full_truth = np.array(original_mask) > 127
-        from qubo_partition.evaluation.metrics import iou
-
-        iou_val = iou(stitched_prediction, full_truth)
-
+        dt = time.time() - t0
+        iou_val = rec.iou_optimal if args.solver == "maxflow" else rec.iou_annealed
         rows.append(
             {
                 "image": image_path.name,
                 "iou": round(iou_val, 4),
-                "iou_optimal": round(iou_val, 4),
-                "gap": 0.0,
-                "solver_runtime": round(solver_time, 3),
-                "total_runtime": round(total_runtime, 3),
+                "iou_optimal": round(rec.iou_optimal, 4),
+                "gap": round(rec.gap.best_gap, 4),
+                "runtime": round(dt, 3),
             }
         )
-
         processed += 1
 
-    if processed % 50 == 0:
-        print(
-            f"[{processed}] {image_path.name} "
-            f"IoU={iou_val:.4f}"
-        )
+        if n_fig < args.n_figures:
+            disp = rgb.mean(axis=2)  # grayscale view of the original for display
+            viz.plot_segmentation(
+                disp,
+                seeded.fg_seeds,
+                seeded.bg_seeds,
+                rec.annealed_labels,
+                rec.optimal_labels,
+                truth=seeded.truth,
+                title=f"{seeded.name}: IoU={iou_val:.2f}",
+                path=str(OUTPUT_DIR / f"{seeded.name}.png"),
+            )
+            n_fig += 1
+
+        if processed % 50 == 0:
+            mean_iou = float(np.mean([r["iou"] for r in rows]))
+            print(
+                f"  [{processed}] {image_path.name[:40]:40s} IoU={iou_val:.3f} "
+                f"(running mean {mean_iou:.3f}, {time.time()-t_start:.0f}s)"
+            )
+            _save_csv(rows)
 
     _save_csv(rows)
     if rows:
@@ -416,7 +263,7 @@ def main():
 
 def _save_csv(rows):
     with open(RESULTS_CSV, "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=["image", "iou", "iou_optimal", "gap", "solver_runtime", "total_runtime"])
+        w = csv.DictWriter(f, fieldnames=["image", "iou", "iou_optimal", "gap", "runtime"])
         w.writeheader()
         w.writerows(rows)
 
