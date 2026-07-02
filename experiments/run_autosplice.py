@@ -24,6 +24,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 from scipy import ndimage
+from skimage.segmentation import slic
 
 from qubo_partition import viz
 from qubo_partition.data.images import SeededImage
@@ -112,6 +113,54 @@ def eroded_seeds(
 
     return pick(fg_in), pick(bg_in)
 
+def automatic_seeds(
+    image: np.ndarray,
+    n_segments: int = 250,
+    fg_percent: float = 0.02,
+    bg_percent: float = 0.10,
+):
+    """
+    Automatically generate foreground/background seeds using
+    ELA + Noise anomaly maps and SLIC superpixels.
+    """
+
+    rgb = image[:, :, :3]
+    ela = image[:, :, 3]
+    noise = image[:, :, 4]
+
+    anomaly = (ela + noise) / 2.0
+
+    segments = slic(
+        rgb,
+        n_segments=n_segments,
+        compactness=10,
+        start_label=0,
+    )
+
+    fg = np.zeros(anomaly.shape, dtype=bool)
+    bg = np.zeros(anomaly.shape, dtype=bool)
+
+    scores = []
+
+    for seg_id in np.unique(segments):
+        region = segments == seg_id
+        score = anomaly[region].mean()
+        scores.append((seg_id, score))
+
+    scores.sort(key=lambda x: x[1])
+
+    n_fg = max(1, int(len(scores) * fg_percent))
+    n_bg = max(1, int(len(scores) * bg_percent))
+
+    for seg_id, _ in scores[-n_fg:]:
+        fg[segments == seg_id] = True
+
+    for seg_id, _ in scores[:n_bg]:
+        bg[segments == seg_id] = True
+
+    return fg, bg
+
+
 
 def collect_pairs() -> list[tuple[Path, Path]]:
     pairs = []
@@ -196,7 +245,7 @@ def main():
             continue
 
         image, rgb = build_features(image_path, args.size, features)
-        fg_seeds, bg_seeds = eroded_seeds(truth, args.n_seeds, args.erode, rng, frac=args.seed_frac)
+        fg_seeds, bg_seeds = automatic_seeds(image)
         if not fg_seeds.any() or not bg_seeds.any():
             continue
 
